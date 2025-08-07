@@ -1,0 +1,456 @@
+#--------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------
+#		                  Solar Cell Structure Generation Script
+#--------------------------------------------------------------------------------------------------------------
+#--------------------------------------------------------------------------------------------------------------
+
+#--------------------------------------------------------------------------------------------------------------
+#		                                 Settings
+#--------------------------------------------------------------------------------------------------------------
+
+# Materials for the layers, in order from bottom to top.
+materials = {"<Object defined dielectric>",
+             "Au (Gold) - Palik",
+             "NiO (Koushik PVL 0.27 1.6um)", 
+             "Perovskite Philips", 
+             "ZnO (Stelling RI 0.32 1.68um)",
+             "ITO (Konig RI 250-1000)"};
+             
+# More descriptive material variable names
+material_names = {"substrate", "gold", "nio", "perovskite", "zno", "ito"};
+
+# Which of the layers is the active layer? (starts at 1, not 0)
+active_layer_index = 4;
+
+# All of the values below should be in um       
+layer_thicknesses = {0.1, 0.2, 0.01, 0.3, 0.1, 0.35};
+
+pitch = 0.51332;
+radius = 0.2;
+thickness= 0.58878;
+
+# Modes: AM1.5 = 1, AM0 = 0
+mode = 0;
+
+
+deleteall();
+
+#--------------------------------------------------------------------------------------------------------------
+#		                       Object Scripts (don't edit)
+#--------------------------------------------------------------------------------------------------------------
+
+# Function that returns a string with the sum of all layer heights up until a point.
+# Used to set layer thicknesses.
+function thicknessCumsum(index, cell_array){
+    if (index == 0) {
+        return "0";
+        }
+
+    output = "h_" + cell_array{1};
+    for (i = 2; i <= index; i = i + 1) {
+        output = output + "+h_" + cell_array{i};
+        }
+
+    return output;
+    }
+
+# Begin defining model script setup script. 
+# Allows for structure adjustments to be made by changing model variables later on.
+
+model_script = '
+# ---------------------------
+# Set all horizontal Layers
+# ---------------------------
+
+';
+
+for(i = 1; i<=length(materials); i = i+1){
+    added_string_1 = "select(\"" + material_names{i} + "\"); \n";
+    added_string_2 = "set(\"z min\", " + thicknessCumsum(i-1, material_names) + "); \n";
+    added_string_3 = "set(\"z max\", " + thicknessCumsum(i, material_names) + "); \n";
+    added_string_4 = "set(\"material\", mat_" + material_names{i} + "); \n\n";
+    
+    model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
+    }
+
+model_script = model_script + '
+# ---------------------------
+# Set monitors
+# ---------------------------
+
+';
+
+# FDTD setup
+
+added_string = "select(\"FDTD\");\nset(\"z min\", " + thicknessCumsum(0, material_names) + ");\n";
+added_string = added_string + "set(\"z max\", " + thicknessCumsum(length(layer_thicknesses), material_names) + "+Rz+0.5e-6);\n";
+added_string = added_string + '
+set("x min", -cos((pi/3))*p);
+set("x max", cos((pi/3))*p);
+set("y min", -sin((pi/3))*p);
+set("y max", sin((pi/3))*p);
+';
+
+model_script = model_script + added_string;
+
+# Source setup
+
+added_string = "\nselect(\"source\");\nset(\"z\", " + thicknessCumsum(length(layer_thicknesses), material_names) + "+Rz+0.4e-6);";
+added_string = added_string + '
+set("x min", -cos((pi/3))*p*4);
+set("x max", cos((pi/3))*p*4);
+set("y min", -sin((pi/3))*p*4);
+set("y max", sin((pi/3))*p*4);
+';
+
+model_script = model_script + added_string;
+
+# Local Mesh setup
+
+added_string = "\nselect(\"mesh\");\nset(\"z min\", " + thicknessCumsum(active_layer_index, material_names) + ");\n";
+added_string = added_string + "set(\"z max\", " + thicknessCumsum(length(layer_thicknesses), material_names) + ");";
+added_string = added_string + '
+set("x min", -cos((pi/3))*p);
+set("x max", cos((pi/3))*p);
+set("y min", -sin((pi/3))*p);
+set("y max", sin((pi/3))*p);
+';
+
+model_script = model_script + added_string;
+
+# Pabs setup
+
+added_string = "select(\"pabs\");\nset(\"z span\", h_" + material_names{active_layer_index} + "+Rz);\n";
+added_string = added_string + "set(\"z\", " + thicknessCumsum(3, material_names) + "+(h_" + material_names{active_layer_index} + "+Rz)/2);\n";
+added_string = added_string + 'set("x", 0);
+set("y", 0);
+set("x span", cos((pi/3))*p*2);
+set("y span", sin((pi/3))*p*2);
+';
+
+
+model_script = model_script + added_string + '
+# ---------------------------
+# Set Spheroids
+# ---------------------------
+';
+
+# Set spheroid variables
+
+for(i = 1; i<=length(materials); i = i+1){
+    added_string_1 = "select(\"sp_" + material_names{i} + "\"); \n";
+    added_string_2 = "adduserprop(\"p\", 2, p);\nadduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\n";
+    added_string_3 = "set(\"z\", " + thicknessCumsum(i, material_names) + "); \n";
+    added_string_4 = "adduserprop(\"material\", 5, mat_" + material_names{i} + "); \n\n";
+    
+    model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
+    }
+
+
+select("::model");
+set("setup script", model_script);
+
+
+# Begin definition of the spheroids script
+# This will be added to each spheroid group
+
+spheroid_script = '
+deleteall;
+mesh = 6;
+
+cosp = p * cos(pi/3);
+sinp = p * sin(pi/3);
+
+positions = [ 0, 0,  p, 0,  -p, 0,  
+              cosp, sinp,  -cosp, sinp,  
+              cosp, -sinp,  -cosp, -sinp,  
+              2*p, 0,  -2*p, 0,  
+              cosp+p, sinp,  -cosp-p, sinp,  
+              cosp+p, -sinp,  -cosp-p, -sinp ];  # Flattened array
+
+num_positions = length(positions) / 2;  # Each point has 2 values (x, y)
+
+for (i = 1:num_positions) {  
+    x_index = 2 * (i - 1) + 1;  # Compute index for x
+    y_index = 2 * (i - 1) + 2;  # Compute index for y
+    
+    addsphere;
+    set("x", positions(x_index));  # Corrected flat array indexing
+    set("y", positions(y_index));  
+    set("z", 0); 
+    set("make ellipsoid", 1);
+    set("radius", R);
+    set("radius 2", R);
+    set("radius 3", Rz);
+    set("material", material);
+    set("override mesh order from material database", 1);
+    set("mesh order", mesh);
+}
+';
+
+#--------------------------------------------------------------------------------------------------------------
+#		                       Running Script (also don't edit)
+#--------------------------------------------------------------------------------------------------------------
+
+# Adding model properties for a dynamically updating model
+
+select("::model");
+adduserprop("p", 2, pitch*1e-6);
+adduserprop("R", 2, radius*1e-6);
+adduserprop("Rz", 2, thickness*1e-6);
+
+for(i = 1; i <= length(materials); i = i + 1) {
+    var_name = "mat_" + material_names{i};
+    adduserprop(var_name, 5, materials{i});
+    }
+
+for(i = 1; i <= length(layer_thicknesses); i = i + 1) {
+    var_name = "h_" + material_names{i};
+    adduserprop(var_name, 2, layer_thicknesses{i}*1e-6);
+    }
+
+# Creating rectangular structures for each layer
+
+for(i=1; i<= length(materials); i = i + 1) {
+    addrect;
+    set("name", material_names{i});
+    set("material", materials{i});
+    set("x", 0);
+    set("x span", 1e-05);
+    set("y", 0);
+    set("y span", 1e-05);
+    
+    addstructuregroup;
+    var_name = "sp_" + material_names{i};
+    set("name", var_name);
+    set("x", 0);
+    set("y", 0);
+    set("script", spheroid_script);
+    }
+
+# Adding monitors
+
+addfdtd;
+set("allow symmetry on all boundaries", 1);
+set("x min bc", "Anti-Symmetric");
+set("x max bc", "Anti-Symmetric");
+set("y min bc", "Symmetric");
+set("y max bc", "Symmetric");
+addmesh;
+addplane;
+set("direction", "Backward");
+
+#--------------------------------------------------------------------------------------------------------
+#                       Script to edit Pabs to measure rough surfaces
+#--------------------------------------------------------------------------------------------------------
+
+addanalysisgroup;
+set("name", "pabs");
+adduserprop("x span", 2, 1e-06);
+adduserprop("y span", 2, 1e-06);
+adduserprop("z span", 2, 1e-06);
+addanalysisprop("active_material", 5, materials{active_layer_index});
+addanalysisprop("spectrum", 0, 1);
+
+
+pabs_analysis_script = '##############################################
+# Power absorbed
+# This script returns the fraction of power from the source that is 
+# absorbed within the volume. The absorption is calculated using the 
+# following relation:
+# L=0.5*eps0*w*(abs(E))^2*imag(eps));
+#
+# Note: interpolation errors can lead to incorrect absorption data. This
+#       is particularly important when using PEC materials. It can also
+#       be significant near interfaces.  Use the advanced version of
+#       the absorption monitor for a more accurate result.
+#
+#
+# Output properties
+# Pabs         power absorbed per unit volume at each position, normalized to the sourcepower (x,y,z,f)
+#              Units: Fraction of source power absorbed / m^3
+# Pabs_total   total power absorbed within the monitor, normalized to the source power (f). 
+#              Units: Fraction of source power absorbed in volume
+#
+# Electric field and refractive index data can be obtained from the child monitors.
+# To convert Pabs_total to have units of watts, multiply by sourcepower(f).
+#
+# Tags: power absorption
+#
+# Copyright 2012 Lumerical Solutions Inc
+#
+#
+# Altered to allow selection of a single material (in this case the active layer)
+# Altered to allow import of external light spectrum data
+################################################
+
+# get raw data from monitors 
+x=getdata("field","x");
+y=getdata("field","y");
+z=getdata("field","z");
+f=getdata("field","f");
+nx=length(x);
+ny=length(y);
+nz=length(z);
+nf=length(f);
+
+#Index measured by the included index monitor
+if (havedata("index","index_x")) {
+  n_matrix=getdata("index","index_x");
+} else {
+  n_matrix=getdata("index","index_z");
+}
+
+#define material filters
+filter = matrix(nx,ny,nz,nf); #Define filter size
+#Filters and n,k values for materials
+filter_real_1 = matrix(nx,ny,nz,nf);
+filter_imag_1 = matrix(nx,ny,nz,nf);
+n_filter_mat_1 = real(getfdtdindex(active_material,f,min(f),max(f)));
+k_filter_mat_1 = imag(getfdtdindex(active_material,f,min(f),max(f)));
+
+
+#Tolerance for the difference
+rel_diff = 1e-15;
+
+for (i = 1:nf) {
+    filter_real_1(1:nx,1:ny,1:nz,i) = almostequal(n_filter_mat_1(2),pinch(real(n_matrix),4,2),rel_diff);
+    filter_imag_1(1:nx,1:ny,1:nz,i) = almostequal(k_filter_mat_1(2),pinch(imag(n_matrix),4,2),rel_diff);
+}
+
+filter = filter + filter_real_1*filter_imag_1;
+
+
+#Plot filter to compare with refractive index from included index monitor
+#image(x*1e6,z*1e6,pinch(pinch(filter,4,8),2,1),"x (um)","y (um)","filter_result");
+
+
+E2_matrix=getelectric("field");
+W=meshgrid4d(4,x,y,z,f*2*pi);            # create 4D matrix of f and sourcepower that 
+SP=meshgrid4d(4,x,y,z,sourcepower(f));   # that is the same size as E2 and n
+
+
+################################################
+# calculate power absorption 
+# as a function of x,y,z,f
+epsilon = eps0*n_matrix^2;
+Pabs_matrix = 0.5*W*E2_matrix*imag(epsilon)*filter;#Inclusion of filter when calculating the pabs
+
+# normalize results to the source power.  Without this line, 
+# Pabs would have units of Watts / m^3
+Pabs_matrix = Pabs_matrix / SP;
+
+# integrate over spatial dimensions to get the fraction of the 
+# source power absorbed in the volume. 
+Pabs_integrated = integrate2(Pabs_matrix*filter,1:3,x,y,z);
+
+# create data sets
+Pabs = rectilineardataset("Pabs",x,y,z);
+Pabs.addparameter("lambda",c/f,"f",f);
+Pabs.addattribute("Pabs",Pabs_matrix);
+
+Pabs_total = matrixdataset("Pabs_total");
+Pabs_total.addparameter("lambda",c/f,"f",f);
+Pabs_total.addattribute("Pabs_total",Pabs_integrated);
+
+
+##########################################################################
+# Calculate generation rate
+?"Starting generation rate (G) calculation";
+
+# Get the solar spectrum
+
+if (spectrum == 1) {
+    lam = solar(0);       # solar spectrum wavelength vector, in units of m.
+    Psolar  = solar(1);    # solar power spectrum, in units of Watts/m^2/m
+} else {
+    data = readdata("solar_data_am0.csv");
+    n_data = size(data);
+    lam_nm = data(1:n_data(1),1);
+    Psolar = data(1:n_data(1),2);
+    
+    Psolar = Psolar * 1e9;    # Convert from W/m^2/nm to W/m^2/m
+    lam = lam_nm * 1e-9;   # Convert from nm to m
+}
+
+f_solar = c/lam;      # solar spectrum frequency vector, in units of Hz
+Nf_solar = length(f_solar);
+
+# select the region of solar spectrum covered by the monitor data
+fl = max([min(f_solar),min(f)]);
+fh = min([max(f_solar),max(f)]);
+fi = find((f_solar>=fl)&(f_solar<=fh));
+f_solar = f_solar(fi);
+lam = lam(fi);
+Psolar = Psolar(fi);
+
+lambda_new = c/f;
+jph_1 = zeros(length(lam));
+
+Pabs_integrated = interp(Pabs_integrated,lambda_new,lam);
+
+for (i=1:length(lam)) {
+    jph_1(i) = Pabs_integrated(i)*Psolar(i)*lam(i);}
+
+jph=integrate((e/(h*c))*jph_1,1,lam);
+?jph;
+
+lambdarange = [c/max(f), c/min(f)];
+? lambdarange;
+
+power_check = integrate(Psolar, 1, lam);  # lam in meters
+? power_check;
+';
+
+pabs_setup_script = 'deleteall;
+##############################################
+# Power absorbed
+# This script sets the size of the field and index monitor
+#
+# Input properties
+# x,y,z span: The span of the monitors
+#
+# Tags: power absorption
+#
+# Copyright 2012 Lumerical Solutions Inc
+##############################################
+
+addpower;
+set("name","field");
+addindex;
+set("name","index");
+
+selectall;
+
+# set spatial size
+set("monitor type","3D");
+set("x",0);
+set("x span",%x span%);
+set("y",0);
+set("y span",%y span%);
+set("z",0);
+set("z span",%z span%);
+
+# spatial downsampling
+set("down sample X",3);
+set("down sample Y",3);
+set("down sample Z",1);
+
+# use global monitor frequency settings
+set("override global monitor settings", 0);
+
+select("field");
+set("output Hx",0);
+set("output Hy",0);
+set("output Hz",0);
+set("output Px",0);
+set("output Py",0);
+set("output Pz",0);
+
+# spatial interpolation
+selectall;
+set("spatial interpolation","none");
+';
+
+set('analysis script', pabs_analysis_script);
+set('setup script',pabs_setup_script);
