@@ -3,7 +3,7 @@
 #		                  Solar Cell Structure Generation Script
 #--------------------------------------------------------------------------------------------------------------
 #--------------------------------------------------------------------------------------------------------------
-
+# newproject; (incase you ran this before)
 #--------------------------------------------------------------------------------------------------------------
 #		                                 Settings
 #--------------------------------------------------------------------------------------------------------------
@@ -15,7 +15,14 @@ materials = {"<Object defined dielectric>",
              "Perovskite Philips", 
              "ZnO (Stelling RI 0.32 1.68um)",
              "ITO (Konig RI 250-1000)"};
-             
+
+#materials = {"<Object defined dielectric>",
+#             "5CB - Li",
+#             "Al (Aluminium) - Palik", 
+#             "C (graphene) - Falkovsky (mid-IR)", 
+#             "Fe (Iron) - CRC",
+#             "InAs - Palik"};
+
 # More descriptive material variable names
 material_names = {"substrate", "gold", "nio", "perovskite", "zno", "ito"};
 
@@ -30,14 +37,20 @@ radius = 0.2;
 thickness= 0.58878;
 
 # Modes: AM1.5 = 1, AM0 = 0
-mode = 0;
+mode = 1;
 
+# Array configuration angle (in radians) - pi/3 for honeycomb, pi/2 for square
+array_angle = (pi/3);
 
-deleteall();
+# Error tolerance - even if set to 0, model variables will be added (can be changed later or swept)
+# This will add a random value up to the value set to the geometrical parameters
+# Aims to simulate fabrication uncertainties (in micrometers)
+structure_error = 0;
 
 #--------------------------------------------------------------------------------------------------------------
 #		                       Object Scripts (don't edit)
 #--------------------------------------------------------------------------------------------------------------
+deleteall;
 
 # Function that returns a string with the sum of all layer heights up until a point.
 # Used to set layer thicknesses.
@@ -85,10 +98,15 @@ model_script = model_script + '
 added_string = "select(\"FDTD\");\nset(\"z min\", " + thicknessCumsum(0, material_names) + ");\n";
 added_string = added_string + "set(\"z max\", " + thicknessCumsum(length(layer_thicknesses), material_names) + "+Rz+0.5e-6);\n";
 added_string = added_string + '
-set("x min", -cos((pi/3))*p);
-set("x max", cos((pi/3))*p);
-set("y min", -sin((pi/3))*p);
-set("y max", sin((pi/3))*p);
+if(array_angle == (pi/2)){
+    set("x min", -p);
+    set("x max", p);
+    } else {
+    set("x min", -cos((array_angle))*p);
+    set("x max", cos((array_angle))*p);
+    }
+set("y min", -sin((array_angle))*p);
+set("y max", sin((array_angle))*p);
 ';
 
 model_script = model_script + added_string;
@@ -97,10 +115,15 @@ model_script = model_script + added_string;
 
 added_string = "\nselect(\"source\");\nset(\"z\", " + thicknessCumsum(length(layer_thicknesses), material_names) + "+Rz+0.4e-6);";
 added_string = added_string + '
-set("x min", -cos((pi/3))*p*4);
-set("x max", cos((pi/3))*p*4);
-set("y min", -sin((pi/3))*p*4);
-set("y max", sin((pi/3))*p*4);
+if(array_angle == (pi/2)){
+    set("x min", -p*4);
+    set("x max", p*4);
+    } else {
+    set("x min", -cos((array_angle))*p*4);
+    set("x max", cos((array_angle))*p*4);
+    }
+set("y min", -sin((array_angle))*p*4);
+set("y max", sin((array_angle))*p*4);
 ';
 
 model_script = model_script + added_string;
@@ -110,10 +133,15 @@ model_script = model_script + added_string;
 added_string = "\nselect(\"mesh\");\nset(\"z min\", " + thicknessCumsum(active_layer_index, material_names) + ");\n";
 added_string = added_string + "set(\"z max\", " + thicknessCumsum(length(layer_thicknesses), material_names) + ");";
 added_string = added_string + '
-set("x min", -cos((pi/3))*p);
-set("x max", cos((pi/3))*p);
-set("y min", -sin((pi/3))*p);
-set("y max", sin((pi/3))*p);
+if(array_angle == (pi/2)){
+    set("x min", -p);
+    set("x max", p);
+    } else {
+    set("x min", -cos((array_angle))*p);
+    set("x max", cos((array_angle))*p);
+    }
+set("y min", -sin((array_angle))*p);
+set("y max", sin((array_angle))*p);
 ';
 
 model_script = model_script + added_string;
@@ -124,8 +152,12 @@ added_string = "select(\"pabs\");\nset(\"z span\", h_" + material_names{active_l
 added_string = added_string + "set(\"z\", " + thicknessCumsum(3, material_names) + "+(h_" + material_names{active_layer_index} + "+Rz)/2);\n";
 added_string = added_string + 'set("x", 0);
 set("y", 0);
-set("x span", cos((pi/3))*p*2);
-set("y span", sin((pi/3))*p*2);
+if(array_angle == (pi/2)){
+        set("x span", p*2);
+    } else {
+        set("x span", cos((array_angle))*p*2);    
+    }
+set("y span", sin((array_angle))*p*2);
 ';
 
 
@@ -138,10 +170,10 @@ model_script = model_script + added_string + '
 # Set spheroid variables
 
 for(i = 1; i<=length(materials); i = i+1){
-    added_string_1 = "select(\"sp_" + material_names{i} + "\"); \n";
-    added_string_2 = "adduserprop(\"p\", 2, p);\nadduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\n";
-    added_string_3 = "set(\"z\", " + thicknessCumsum(i, material_names) + "); \n";
-    added_string_4 = "adduserprop(\"material\", 5, mat_" + material_names{i} + "); \n\n";
+    added_string_1 = "select(\"sp_" + material_names{i} + "\");\nadduserprop(\"p\", 2, p);\n";
+    added_string_2 = "adduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\nset(\"z\", " + thicknessCumsum(i, material_names);
+    added_string_3 = ");\nadduserprop(\"material\", 5, mat_" + material_names{i} + ");\nadduserprop(\"array_angle\", 0, ";
+    added_string_4 = num2str(array_angle) + ");\nadduserprop(\"structure_error\", 2, " + num2str(structure_error) + "e-06);\n\n";
     
     model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
     }
@@ -158,8 +190,8 @@ spheroid_script = '
 deleteall;
 mesh = 6;
 
-cosp = p * cos(pi/3);
-sinp = p * sin(pi/3);
+cosp = p * cos(array_angle);
+sinp = p * sin(array_angle);
 
 positions = [ 0, 0,  p, 0,  -p, 0,  
               cosp, sinp,  -cosp, sinp,  
@@ -181,7 +213,7 @@ for (i = 1:num_positions) {
     set("make ellipsoid", 1);
     set("radius", R);
     set("radius 2", R);
-    set("radius 3", Rz);
+    set("radius 3", Rz + (-structure_error + 2 * structure_error * rand(0, 10000)/10000.0));
     set("material", material);
     set("override mesh order from material database", 1);
     set("mesh order", mesh);
@@ -198,6 +230,8 @@ select("::model");
 adduserprop("p", 2, pitch*1e-6);
 adduserprop("R", 2, radius*1e-6);
 adduserprop("Rz", 2, thickness*1e-6);
+adduserprop("array_angle", 0, array_angle);
+adduserprop("structure_error", 2, structure_error*1e-6);
 
 for(i = 1; i <= length(materials); i = i + 1) {
     var_name = "mat_" + material_names{i};
@@ -239,6 +273,8 @@ set("y max bc", "Symmetric");
 addmesh;
 addplane;
 set("direction", "Backward");
+set("wavelength start", 0.3e-06);
+set("wavelength stop", 1e-06);
 
 #--------------------------------------------------------------------------------------------------------
 #                       Script to edit Pabs to measure rough surfaces
@@ -251,6 +287,11 @@ adduserprop("y span", 2, 1e-06);
 adduserprop("z span", 2, 1e-06);
 addanalysisprop("active_material", 5, materials{active_layer_index});
 addanalysisprop("spectrum", 0, 1);
+addanalysisresult("jph");
+addanalysisresult("Pabs");
+addanalysisresult("Pabs_total");
+addanalysisresult("power_check");
+addanalysisresult("lambda_range");
 
 
 pabs_analysis_script = '##############################################
@@ -395,8 +436,8 @@ for (i=1:length(lam)) {
 jph=integrate((e/(h*c))*jph_1,1,lam);
 ?jph;
 
-lambdarange = [c/max(f), c/min(f)];
-? lambdarange;
+lambda_range = [c/max(f), c/min(f)];
+? lambda_range;
 
 power_check = integrate(Psolar, 1, lam);  # lam in meters
 ? power_check;
