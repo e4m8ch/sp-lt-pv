@@ -1,4 +1,4 @@
-# Light-trapping Photovoltaics
+# Light-trapping Photovoltaics ⚡
 
 Simple Lumerical script to generate a full simulation environment for a nanopatterned solar cell. Actively updating to add more features.
 
