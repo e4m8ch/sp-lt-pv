@@ -47,6 +47,10 @@ array_angle = (pi/3);
 # Aims to simulate fabrication uncertainties (in micrometers)
 structure_error = 0;
 
+# Pick the type of nanostructure to be added.
+# Options are "planar", "spheroid", "pyramid"
+structure_type = "pyramid";
+
 #--------------------------------------------------------------------------------------------------------------
 #		                       Object Scripts (don't edit)
 #--------------------------------------------------------------------------------------------------------------
@@ -163,21 +167,32 @@ set("y span", sin((array_angle))*p*2);
 
 model_script = model_script + added_string + '
 # ---------------------------
-# Set Spheroids
+# Set Structures
 # ---------------------------
 ';
 
 # Set spheroid variables
-
-for(i = 1; i<=length(materials); i = i+1){
-    added_string_1 = "select(\"sp_" + material_names{i} + "\");\nadduserprop(\"p\", 2, p);\n";
-    added_string_2 = "adduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\nset(\"z\", " + thicknessCumsum(i, material_names);
-    added_string_3 = ");\nadduserprop(\"material\", 5, mat_" + material_names{i} + ");\nadduserprop(\"array_angle\", 0, ";
-    added_string_4 = num2str(array_angle) + ");\nadduserprop(\"structure_error\", 2, " + num2str(structure_error) + "e-06);\n\n";
-    
-    model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
+if(structure_type == "spheroid"){
+    for(i = 1; i<=length(materials); i = i+1){
+        added_string_1 = "select(\"st_" + material_names{i} + "\");\nadduserprop(\"p\", 2, p);\n";
+        added_string_2 = "adduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\nset(\"z\", " + thicknessCumsum(i, material_names);
+        added_string_3 = ");\nadduserprop(\"material\", 5, mat_" + material_names{i} + ");\nadduserprop(\"array_angle\", 0, ";
+        added_string_4 = num2str(array_angle) + ");\nadduserprop(\"structure_error\", 2, " + num2str(structure_error) + "e-06);\n\n";
+        
+        model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
     }
+}
 
+if(structure_type == "pyramid"){
+    for(i = 1; i<=length(materials); i = i+1){
+        added_string_1 = "select(\"st_" + material_names{i} + "\");\nadduserprop(\"p\", 2, p);\n";
+        added_string_2 = "adduserprop(\"R\", 2, R);\nadduserprop(\"Rz\", 2, Rz);\nset(\"z\", " + thicknessCumsum(i, material_names);
+        added_string_3 = ");\nadduserprop(\"material\", 5, mat_" + material_names{i} + ");\nadduserprop(\"array_angle\", 0, ";
+        added_string_4 = num2str(array_angle) + ");\nadduserprop(\"structure_error\", 2, " + num2str(structure_error) + "e-06);\n\n";
+        
+        model_script = model_script + added_string_1 + added_string_2 + added_string_3 + added_string_4;
+    }
+}
 
 select("::model");
 set("setup script", model_script);
@@ -220,6 +235,45 @@ for (i = 1:num_positions) {
 }
 ';
 
+# Begin definition of the pyramid script
+# This will be added to each pyramid group
+
+pyramid_script = '
+deleteall;
+mesh = 6;
+
+cosp = p * cos(array_angle);
+sinp = p * sin(array_angle);
+
+positions = [ 0, 0,  p, 0,  -p, 0,  
+              cosp, sinp,  -cosp, sinp,  
+              cosp, -sinp,  -cosp, -sinp,  
+              2*p, 0,  -2*p, 0,  
+              cosp+p, sinp,  -cosp-p, sinp,  
+              cosp+p, -sinp,  -cosp-p, -sinp ];  # Flattened array
+
+num_positions = length(positions) / 2;  # Each point has 2 values (x, y)
+
+for (i = 1:num_positions) {  
+    x_index = 2 * (i - 1) + 1;  # Compute index for x
+    y_index = 2 * (i - 1) + 2;  # Compute index for y
+    
+    addpyramid;
+    set("x", positions(x_index));  # Corrected flat array indexing
+    set("y", positions(y_index));  
+    set("z", Rz/2); 
+    set("x span bottom", R);
+    set("x span top", 0);
+    set("y span bottom", R);
+    set("y span top", 0);
+    set("z span",1e-6);
+    set("z span", Rz + (-structure_error + 2 * structure_error * rand(0, 10000)/10000.0));
+    set("material", material);
+    set("override mesh order from material database", 1);
+    set("mesh order", mesh);
+}
+';
+
 #--------------------------------------------------------------------------------------------------------------
 #		                       Running Script (also don't edit)
 #--------------------------------------------------------------------------------------------------------------
@@ -255,12 +309,17 @@ for(i=1; i<= length(materials); i = i + 1) {
     set("y span", 1e-05);
     
     addstructuregroup;
-    var_name = "sp_" + material_names{i};
+    var_name = "st_" + material_names{i};
     set("name", var_name);
     set("x", 0);
     set("y", 0);
-    set("script", spheroid_script);
+    if(structure_type == "spheroid"){
+        set("script", spheroid_script);
     }
+    if(structure_type == "pyramid"){
+        set("script", pyramid_script);
+    }
+}
 
 # Adding monitors
 
